@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import { GitFork, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { killSession } from "@/lib/terminal";
 import { useOpenProject } from "@/lib/useOpenProject";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
+import { useGitStore } from "./stores/useGitStore";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
 import { BottomBar } from "./components/shared/BottomBar";
 import { FloatingAddButton } from "./components/shared/FloatingAddButton";
@@ -62,6 +64,20 @@ function App() {
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
   const activeTab = tabs.find((tab) => tab.active) ?? null;
   const activeProjectPath = activeTab?.projectPath;
+
+  // Git store for commit count and refresh
+  const { commits, fetchCommits } = useGitStore();
+  const [isRefreshingGit, setIsRefreshingGit] = useState(false);
+
+  const handleRefreshGit = useCallback(async () => {
+    if (!activeProjectPath) return;
+    setIsRefreshingGit(true);
+    try {
+      await fetchCommits(activeProjectPath);
+    } finally {
+      setIsRefreshingGit(false);
+    }
+  }, [activeProjectPath, fetchCommits]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,16 +141,56 @@ function App() {
 
         {/* Right column: top bar + content + bottom bar */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Top bar (branch selector, settings - no window controls since ProjectTabs has them) */}
-          <TopBar
-            sidebarOpen={sidebarOpen}
-            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-            branchName={currentBranch}
-            repoPath={activeTab ? activeTab.projectPath : undefined}
-            onToggleGitPanel={() => setGitPanelOpen((prev) => !prev)}
-            gitPanelOpen={gitPanelOpen}
-            hideWindowControls
-          />
+          {/* Top bar row - includes git panel header when open */}
+          <div className="flex h-10 shrink-0 bg-maestro-bg">
+            {/* TopBar takes flex-1 to fill available space */}
+            <TopBar
+              sidebarOpen={sidebarOpen}
+              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+              branchName={currentBranch}
+              repoPath={activeTab ? activeTab.projectPath : undefined}
+              onToggleGitPanel={() => setGitPanelOpen((prev) => !prev)}
+              gitPanelOpen={gitPanelOpen}
+              hideWindowControls
+              onBranchChanged={(newBranch) => setCurrentBranch(newBranch)}
+            />
+
+            {/* Git panel header - inline at same level as TopBar */}
+            {gitPanelOpen && (
+              <div
+                className="flex h-10 shrink-0 items-center border-l border-maestro-border px-3 gap-2 bg-maestro-bg"
+                style={{ width: 560 }}
+              >
+                <GitFork size={14} className="text-maestro-muted" />
+                <span className="text-sm font-medium text-maestro-text">Commits</span>
+                {commits.length > 0 && (
+                  <span className="rounded-full bg-maestro-accent/15 px-1.5 py-px text-[10px] font-medium text-maestro-accent">
+                    {commits.length}
+                  </span>
+                )}
+                <div className="flex-1" />
+                {activeProjectPath && (
+                  <button
+                    type="button"
+                    onClick={handleRefreshGit}
+                    disabled={isRefreshingGit}
+                    className="rounded p-1 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text disabled:opacity-50"
+                    aria-label="Refresh commits"
+                  >
+                    <RefreshCw size={14} className={isRefreshingGit ? "animate-spin" : ""} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setGitPanelOpen(false)}
+                  className="rounded p-1 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
+                  aria-label="Close git panel"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Content area (main + optional git panel) */}
           <div className="flex flex-1 overflow-hidden">
@@ -147,7 +203,12 @@ function App() {
             </main>
 
             {/* Git graph panel (optional right side) */}
-            <GitGraphPanel open={gitPanelOpen} onClose={() => setGitPanelOpen(false)} />
+            <GitGraphPanel
+              open={gitPanelOpen}
+              onClose={() => setGitPanelOpen(false)}
+              repoPath={activeProjectPath ?? null}
+              currentBranch={currentBranch ?? null}
+            />
           </div>
 
           {/* Bottom action bar */}

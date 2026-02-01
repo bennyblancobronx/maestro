@@ -42,7 +42,7 @@ pub fn run() {
             commands::terminal::write_stdin,
             commands::terminal::resize_pty,
             commands::terminal::kill_session,
-            // Git commands (new)
+            // Git commands
             commands::git::git_branches,
             commands::git::git_current_branch,
             commands::git::git_uncommitted_count,
@@ -50,6 +50,15 @@ pub fn run() {
             commands::git::git_worktree_add,
             commands::git::git_worktree_remove,
             commands::git::git_commit_log,
+            commands::git::git_checkout_branch,
+            commands::git::git_create_branch,
+            commands::git::git_commit_files,
+            commands::git::git_user_config,
+            commands::git::git_set_user_config,
+            commands::git::git_list_remotes,
+            commands::git::git_add_remote,
+            commands::git::git_remove_remote,
+            commands::git::git_refs_for_commit,
             // Session commands (new)
             commands::session::get_sessions,
             commands::session::create_session,
