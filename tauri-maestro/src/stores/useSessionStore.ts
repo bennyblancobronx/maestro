@@ -23,6 +23,7 @@ export type BackendSessionStatus =
  * @property id - Unique numeric session ID assigned by the backend.
  * @property branch - Git branch the session operates on, or null for the default branch.
  * @property worktree_path - Filesystem path to the git worktree, if one was created.
+ * @property project_path - Canonicalized project directory this session belongs to.
  */
 export interface SessionConfig {
   id: number;
@@ -30,6 +31,7 @@ export interface SessionConfig {
   branch: string | null;
   status: BackendSessionStatus;
   worktree_path: string | null;
+  project_path: string;
 }
 
 /** Shape of the Tauri `session-status-changed` event payload. */
@@ -52,6 +54,9 @@ interface SessionState {
   isLoading: boolean;
   error: string | null;
   fetchSessions: () => Promise<void>;
+  fetchSessionsForProject: (projectPath: string) => Promise<void>;
+  removeSessionsForProject: (projectPath: string) => Promise<SessionConfig[]>;
+  getSessionsByProject: (projectPath: string) => SessionConfig[];
   initListeners: () => Promise<UnlistenFn>;
 }
 
@@ -63,7 +68,7 @@ let listenerCount = 0;
 let pendingInit: Promise<void> | null = null;
 let activeUnlisten: UnlistenFn | null = null;
 
-export const useSessionStore = create<SessionState>()((set) => ({
+export const useSessionStore = create<SessionState>()((set, get) => ({
   sessions: [],
   isLoading: false,
   error: null,
@@ -77,6 +82,41 @@ export const useSessionStore = create<SessionState>()((set) => ({
       console.error("Failed to fetch sessions:", err);
       set({ error: String(err), isLoading: false });
     }
+  },
+
+  fetchSessionsForProject: async (projectPath: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const sessions = await invoke<SessionConfig[]>("get_sessions_for_project", {
+        projectPath,
+      });
+      set({ sessions, isLoading: false });
+    } catch (err) {
+      console.error("Failed to fetch sessions for project:", err);
+      set({ error: String(err), isLoading: false });
+    }
+  },
+
+  removeSessionsForProject: async (projectPath: string) => {
+    try {
+      const removed = await invoke<SessionConfig[]>("remove_sessions_for_project", {
+        projectPath,
+      });
+      // Remove the sessions from local state
+      set((state) => ({
+        sessions: state.sessions.filter(
+          (s) => !removed.some((r) => r.id === s.id)
+        ),
+      }));
+      return removed;
+    } catch (err) {
+      console.error("Failed to remove sessions for project:", err);
+      return [];
+    }
+  },
+
+  getSessionsByProject: (projectPath: string) => {
+    return get().sessions.filter((s) => s.project_path === projectPath);
   },
 
   initListeners: async () => {
