@@ -8,7 +8,6 @@ import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
 import { useGitStore } from "./stores/useGitStore";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
 import { BottomBar } from "./components/shared/BottomBar";
-import { FloatingAddButton } from "./components/shared/FloatingAddButton";
 import { MultiProjectView, type MultiProjectViewHandle } from "./components/shared/MultiProjectView";
 import { ProjectTabs } from "./components/shared/ProjectTabs";
 import { TopBar } from "./components/shared/TopBar";
@@ -33,7 +32,8 @@ function App() {
   const multiProjectRef = useRef<MultiProjectViewHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
-  const [sessionCounts, setSessionCounts] = useState<Map<string, number>>(new Map());
+  const [sessionCounts, setSessionCounts] = useState<Map<string, { slotCount: number; launchedCount: number }>>(new Map());
+  const [isStoppingAll, setIsStoppingAll] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string | undefined>(undefined);
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem("maestro-theme");
@@ -100,19 +100,21 @@ function App() {
 
   // Derive state from active tab
   const activeTabSessionsLaunched = activeTab?.sessionsLaunched ?? false;
-  const activeTabSessionCount = activeTab ? (sessionCounts.get(activeTab.id) ?? 0) : 0;
+  const activeTabCounts = activeTab ? sessionCounts.get(activeTab.id) : undefined;
+  const activeTabSlotCount = activeTabCounts?.slotCount ?? 0;
+  const activeTabLaunchedCount = activeTabCounts?.launchedCount ?? 0;
 
-  // Handler to launch a session for the active project
-  const handleAddSession = () => {
+  // Handler to enter grid view for the active project
+  const handleEnterGridView = () => {
     if (activeTab) {
       setSessionsLaunched(activeTab.id, true);
     }
   };
 
-  const handleSessionCountChange = useCallback((tabId: string, count: number) => {
+  const handleSessionCountChange = useCallback((tabId: string, slotCount: number, launchedCount: number) => {
     setSessionCounts((prev) => {
       const next = new Map(prev);
-      next.set(tabId, count);
+      next.set(tabId, { slotCount, launchedCount });
       return next;
     });
   }, []);
@@ -214,37 +216,48 @@ function App() {
           {/* Bottom action bar */}
           <div className="bg-maestro-bg">
             <BottomBar
-              sessionsActive={activeTabSessionsLaunched}
-              sessionCount={activeTabSessionCount}
+              inGridView={activeTabSessionsLaunched}
+              slotCount={activeTabSlotCount}
+              launchedCount={activeTabLaunchedCount}
+              maxSessions={DEFAULT_SESSION_COUNT}
+              isStoppingAll={isStoppingAll}
               onSelectDirectory={handleOpenProject}
-              onLaunchAll={handleAddSession}
-              onStopAll={async () => {
-                if (!activeTab) return;
-                // Kill all running sessions for this project via the session store
-                const sessionStore = useSessionStore.getState();
-                const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
-                const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
-                for (const result of results) {
-                  if (result.status === "rejected") {
-                    console.error("Failed to stop session:", result.reason);
-                  }
+              onLaunchAll={() => {
+                if (!activeTabSessionsLaunched && activeTab) {
+                  // First enter grid view, then launch
+                  handleEnterGridView();
                 }
-                setSessionsLaunched(activeTab.id, false);
-                setSessionCounts((prev) => {
-                  const next = new Map(prev);
-                  next.set(activeTab.id, 0);
-                  return next;
-                });
+                multiProjectRef.current?.launchAllInActiveProject();
+              }}
+              onAddSession={() => multiProjectRef.current?.addSessionToActiveProject()}
+              onStopAll={async () => {
+                if (!activeTab || isStoppingAll) return;
+                setIsStoppingAll(true);
+                try {
+                  // Kill all running sessions for this project via the session store
+                  const sessionStore = useSessionStore.getState();
+                  const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
+                  const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
+                  for (const result of results) {
+                    if (result.status === "rejected") {
+                      console.error("Failed to stop session:", result.reason);
+                    }
+                  }
+                  setSessionsLaunched(activeTab.id, false);
+                  setSessionCounts((prev) => {
+                    const next = new Map(prev);
+                    next.set(activeTab.id, { slotCount: 0, launchedCount: 0 });
+                    return next;
+                  });
+                } finally {
+                  setIsStoppingAll(false);
+                }
               }}
             />
           </div>
         </div>
       </div>
 
-      {/* Floating add session button (only when sessions active and below max) */}
-      {activeTabSessionsLaunched && activeTabSessionCount < DEFAULT_SESSION_COUNT && (
-        <FloatingAddButton onClick={() => multiProjectRef.current?.addSessionToActiveProject()} />
-      )}
     </div>
   );
 }

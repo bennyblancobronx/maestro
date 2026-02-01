@@ -1,6 +1,10 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+
+import { getBranchesWithWorktreeStatus, type BranchWithWorktreeStatus } from "@/lib/git";
 import { killSession, spawnShell } from "@/lib/terminal";
+import type { AiMode } from "@/stores/useSessionStore";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
+import { PreLaunchCard, type SessionSlot } from "./PreLaunchCard";
 import { TerminalView } from "./TerminalView";
 
 /** Hard ceiling on concurrent PTY sessions per grid to bound resource usage. */
@@ -21,12 +25,28 @@ function gridClass(count: number): string {
   return "grid-cols-4";
 }
 
+/** Generates a unique ID for a new session slot. */
+function generateSlotId(): string {
+  return `slot-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Creates a new empty session slot with default configuration. */
+function createEmptySlot(): SessionSlot {
+  return {
+    id: generateSlotId(),
+    mode: "Claude",
+    branch: null,
+    sessionId: null,
+  };
+}
+
 /**
  * Imperative handle exposed via `useImperativeHandle` so parent components
- * (e.g. a toolbar button) can add sessions without lifting state up.
+ * (e.g. a toolbar button) can add sessions or launch all without lifting state up.
  */
 export interface TerminalGridHandle {
   addSession: () => void;
+  launchAll: () => Promise<void>;
 }
 
 /**
@@ -34,30 +54,28 @@ export interface TerminalGridHandle {
  *   uses its own default cwd.
  * @property tabId - Workspace tab ID for session-project association.
  * @property preserveOnHide - If true, don't kill sessions when component unmounts (for project switching).
- * @property onSessionCountChange - Fires whenever the session array length changes,
- *   letting parents update badge counts or toolbar state.
+ * @property onSessionCountChange - Fires whenever session counts change,
+ *   providing both total slot count and launched session count.
  */
 interface TerminalGridProps {
   projectPath?: string;
   tabId?: string;
   preserveOnHide?: boolean;
-  onSessionCountChange?: (count: number) => void;
+  onSessionCountChange?: (slotCount: number, launchedCount: number) => void;
 }
 
 /**
- * Manages a dynamic grid of {@link TerminalView} cells backed by PTY sessions.
+ * Manages a dynamic grid of session slots that can be either:
+ * - Pre-launch cards (allowing user to configure AI mode and branch before launching)
+ * - Active terminal views (connected to a backend PTY session)
  *
  * Lifecycle:
- * - On mount, spawns a single shell and stores its ID. If the effect is
- *   cancelled before the spawn resolves (React Strict Mode double-mount),
- *   the session is killed immediately to avoid orphaned PTYs.
- * - `sessionsRef` is kept in sync with state so the unmount cleanup can
- *   kill all live sessions without stale closure issues.
- * - When all sessions are killed by the user (length drops to 0 after
- *   initial mount), an auto-respawn effect creates a fresh session so
- *   the user is never left with an empty grid.
- * - `addSession` double-checks MAX_SESSIONS inside the setState updater
- *   to guard against race conditions from rapid clicks.
+ * - On mount, creates a single empty slot for the user to configure.
+ * - User configures AI mode and branch, then clicks "Launch" to spawn a shell.
+ * - `addSession` creates new pre-launch slots up to MAX_SESSIONS.
+ * - "Launch All" spawns all unlaunched slots with their configured settings.
+ * - When all sessions are killed by the user, an auto-respawn effect creates
+ *   a fresh slot so the user is never left with an empty grid.
  */
 export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(function TerminalGrid(
   { projectPath, tabId, preserveOnHide = false, onSessionCountChange },
@@ -65,107 +83,161 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
 ) {
   const addSessionToProject = useWorkspaceStore((s) => s.addSessionToProject);
   const removeSessionFromProject = useWorkspaceStore((s) => s.removeSessionFromProject);
-  const [sessions, setSessions] = useState<number[]>([]);
+
+  // Track session slots (pre-launch and launched)
+  const [slots, setSlots] = useState<SessionSlot[]>(() => [createEmptySlot()]);
   const [error, setError] = useState<string | null>(null);
-  const sessionsRef = useRef<number[]>([]);
+
+  // Git branch data
+  const [branches, setBranches] = useState<BranchWithWorktreeStatus[]>([]);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [isGitRepo, setIsGitRepo] = useState(true);
+
+  // Refs for cleanup
+  const slotsRef = useRef<SessionSlot[]>([]);
   const mounted = useRef(false);
-  const isMountedRef = useRef(true);
 
+  // Sync refs with state and report counts to parent
   useEffect(() => {
-    sessionsRef.current = sessions;
-    onSessionCountChange?.(sessions.length);
-  }, [sessions, onSessionCountChange]);
+    slotsRef.current = slots;
+    const launchedCount = slots.filter((s) => s.sessionId !== null).length;
+    onSessionCountChange?.(slots.length, launchedCount);
+  }, [slots, onSessionCountChange]);
 
+  // Fetch branches when projectPath is available
   useEffect(() => {
-    let cancelled = false;
+    if (!projectPath) {
+      setIsGitRepo(false);
+      return;
+    }
 
-    spawnShell(projectPath)
-      .then((id) => {
-        if (!cancelled) {
-          setSessions([id]);
-          mounted.current = true;
-          // Register session with the project
-          if (tabId) {
-            addSessionToProject(tabId, id);
-          }
-        } else {
-          killSession(id).catch(console.error);
-        }
+    setIsLoadingBranches(true);
+    getBranchesWithWorktreeStatus(projectPath)
+      .then((branchList) => {
+        setBranches(branchList);
+        setIsGitRepo(true);
+        setIsLoadingBranches(false);
       })
       .catch((err) => {
-        console.error(err);
-        if (!cancelled) {
-          setError("Failed to start terminal session");
-        }
+        console.error("Failed to fetch branches:", err);
+        setIsGitRepo(false);
+        setIsLoadingBranches(false);
       });
+  }, [projectPath]);
 
+  // Mark as mounted after first render
+  useEffect(() => {
+    mounted.current = true;
     return () => {
-      cancelled = true;
       mounted.current = false;
-      isMountedRef.current = false;
-      // Only kill sessions if not preserving (i.e., project actually closed)
+      // Kill all launched sessions on unmount (unless preserving)
       if (!preserveOnHide) {
-        for (const id of sessionsRef.current) {
-          killSession(id).catch(console.error);
+        for (const slot of slotsRef.current) {
+          if (slot.sessionId !== null) {
+            killSession(slot.sessionId).catch(console.error);
+          }
         }
       }
     };
-  }, [projectPath, tabId, preserveOnHide, addSessionToProject]);
+  }, [preserveOnHide]);
 
-  // Auto-respawn when all sessions close (not initial mount, not error)
+  // Auto-respawn a slot when all slots are removed (not on initial mount)
   useEffect(() => {
-    let cancelled = false;
-    if (sessions.length === 0 && mounted.current && !error) {
-      spawnShell(projectPath)
-        .then((id) => {
-          if (!cancelled) {
-            setSessions([id]);
-            // Register session with the project
-            if (tabId) {
-              addSessionToProject(tabId, id);
-            }
-          } else {
-            killSession(id).catch(console.error);
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          if (!cancelled) setError("Failed to restart terminal session");
-        });
+    if (slots.length === 0 && mounted.current && !error) {
+      setSlots([createEmptySlot()]);
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [sessions.length, error, projectPath, tabId, addSessionToProject]);
+  }, [slots.length, error]);
 
+  /**
+   * Launches a single slot by spawning a shell with the configured settings.
+   */
+  const launchSlot = useCallback(async (slotId: string) => {
+    const slot = slotsRef.current.find((s) => s.id === slotId);
+    if (!slot || slot.sessionId !== null) return;
+
+    try {
+      // TODO: Use slot.branch to create/checkout worktree if needed
+      // For now, spawn in the project path
+      const sessionId = await spawnShell(projectPath);
+
+      setSlots((prev) =>
+        prev.map((s) =>
+          s.id === slotId ? { ...s, sessionId } : s
+        )
+      );
+
+      // Register session with the project
+      if (tabId) {
+        addSessionToProject(tabId, sessionId);
+      }
+    } catch (err) {
+      console.error("Failed to spawn shell:", err);
+      setError("Failed to start terminal session");
+    }
+  }, [projectPath, tabId, addSessionToProject]);
+
+  /**
+   * Launches all unlaunched slots sequentially.
+   */
+  const launchAll = useCallback(async () => {
+    const unlaunchedSlots = slotsRef.current.filter((s) => s.sessionId === null);
+    for (const slot of unlaunchedSlots) {
+      await launchSlot(slot.id);
+    }
+  }, [launchSlot]);
+
+  /**
+   * Handles killing/closing a session, updating the slot state.
+   */
   const handleKill = useCallback((sessionId: number) => {
-    setSessions((prev) => prev.filter((id) => id !== sessionId));
+    setSlots((prev) => prev.filter((s) => s.sessionId !== sessionId));
     // Unregister session from the project
     if (tabId) {
       removeSessionFromProject(tabId, sessionId);
     }
   }, [tabId, removeSessionFromProject]);
 
-  const addSession = useCallback(() => {
-    if (sessionsRef.current.length >= MAX_SESSIONS) return;
-    spawnShell(projectPath)
-      .then((id) => {
-        setSessions((prev) => {
-          if (prev.length >= MAX_SESSIONS) {
-            killSession(id).catch(console.error);
-            return prev;
-          }
-          return [...prev, id];
-        });
-        // Register session with the project
-        if (tabId) {
-          addSessionToProject(tabId, id);
-        }
-      })
-      .catch(console.error);
-  }, [projectPath, tabId, addSessionToProject]);
+  /**
+   * Removes a pre-launch slot (before it's launched).
+   */
+  const removeSlot = useCallback((slotId: string) => {
+    setSlots((prev) => prev.filter((s) => s.id !== slotId));
+  }, []);
 
-  useImperativeHandle(ref, () => ({ addSession }), [addSession]);
+  /**
+   * Updates the AI mode for a slot.
+   */
+  const updateSlotMode = useCallback((slotId: string, mode: AiMode) => {
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.id === slotId ? { ...s, mode } : s
+      )
+    );
+  }, []);
+
+  /**
+   * Updates the branch for a slot.
+   */
+  const updateSlotBranch = useCallback((slotId: string, branch: string | null) => {
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.id === slotId ? { ...s, branch } : s
+      )
+    );
+  }, []);
+
+  /**
+   * Adds a new pre-launch slot to the grid.
+   */
+  const addSession = useCallback(() => {
+    if (slotsRef.current.length >= MAX_SESSIONS) return;
+    setSlots((prev) => {
+      if (prev.length >= MAX_SESSIONS) return prev;
+      return [...prev, createEmptySlot()];
+    });
+  }, []);
+
+  useImperativeHandle(ref, () => ({ addSession, launchAll }), [addSession, launchAll]);
 
   if (error) {
     return (
@@ -175,21 +247,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
           type="button"
           onClick={() => {
             setError(null);
-            spawnShell(projectPath)
-              .then((id) => {
-                if (!isMountedRef.current) {
-                  killSession(id).catch(console.error);
-                  return;
-                }
-                mounted.current = true;
-                setSessions([id]);
-              })
-              .catch((err) => {
-                console.error(err);
-                if (isMountedRef.current) {
-                  setError("Failed to start terminal session");
-                }
-              });
+            setSlots([createEmptySlot()]);
           }}
           className="rounded bg-maestro-border px-3 py-1.5 text-xs text-maestro-text hover:bg-maestro-muted/20"
         >
@@ -199,19 +257,34 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     );
   }
 
-  if (sessions.length === 0) {
+  if (slots.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-maestro-muted text-sm">
-        Starting terminal...
+        Initializing...
       </div>
     );
   }
 
   return (
-    <div className={`grid h-full ${gridClass(sessions.length)} gap-2 bg-maestro-bg p-2`}>
-      {sessions.map((id) => (
-        <TerminalView key={id} sessionId={id} onKill={handleKill} />
-      ))}
+    <div className={`grid h-full ${gridClass(slots.length)} gap-2 bg-maestro-bg p-2`}>
+      {slots.map((slot) =>
+        slot.sessionId !== null ? (
+          <TerminalView key={slot.id} sessionId={slot.sessionId} onKill={handleKill} />
+        ) : (
+          <PreLaunchCard
+            key={slot.id}
+            slot={slot}
+            projectPath={projectPath ?? ""}
+            branches={branches}
+            isLoadingBranches={isLoadingBranches}
+            isGitRepo={isGitRepo}
+            onModeChange={(mode) => updateSlotMode(slot.id, mode)}
+            onBranchChange={(branch) => updateSlotBranch(slot.id, branch)}
+            onLaunch={() => launchSlot(slot.id)}
+            onRemove={() => removeSlot(slot.id)}
+          />
+        )
+      )}
     </div>
   );
 });
