@@ -1,6 +1,7 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { killSession } from "@/lib/terminal";
 
 // --- Types ---
 
@@ -147,6 +148,20 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       closeTab: (id: string) => {
+        const tabToClose = get().tabs.find((t) => t.id === id);
+
+        // Kill all sessions belonging to this project (fire-and-forget)
+        if (tabToClose && tabToClose.sessionIds.length > 0) {
+          Promise.allSettled(tabToClose.sessionIds.map((sessionId) => killSession(sessionId)))
+            .then((results) => {
+              for (const result of results) {
+                if (result.status === "rejected") {
+                  console.error("Failed to kill session on tab close:", result.reason);
+                }
+              }
+            });
+        }
+
         const remaining = get().tabs.filter((t) => t.id !== id);
 
         if (remaining.length === 0) {
