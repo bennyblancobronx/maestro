@@ -1,4 +1,4 @@
-import { useRef, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useRef, forwardRef, useImperativeHandle, useMemo } from "react";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
 import { IdleLandingView } from "./IdleLandingView";
 import { SessionPodGrid } from "../terminal/SessionPodGrid";
@@ -47,30 +47,43 @@ export const MultiProjectView = forwardRef<MultiProjectViewHandle, MultiProjectV
     },
   }), [tabs]);
 
-  const handleSessionCountChange = useCallback(
-    (tabId: string) => (slotCount: number, launchedCount: number) => {
-      onSessionCountChange?.(tabId, slotCount, launchedCount);
-    },
-    [onSessionCountChange]
-  );
+  // Create stable callbacks per tab to avoid infinite re-render loops
+  // The callbacks are memoized by tab.id so they don't change on every render
+  const sessionCountChangeCallbacks = useMemo(() => {
+    const callbacks = new Map<string, (slotCount: number, launchedCount: number) => void>();
+    for (const tab of tabs) {
+      callbacks.set(tab.id, (slotCount: number, launchedCount: number) => {
+        onSessionCountChange?.(tab.id, slotCount, launchedCount);
+      });
+    }
+    return callbacks;
+  }, [tabs, onSessionCountChange]);
 
-  const handleLaunch = useCallback(
-    (tabId: string) => () => {
-      setSessionsLaunched(tabId, true);
-    },
-    [setSessionsLaunched]
-  );
+  // Stable launch callbacks per tab
+  const launchCallbacks = useMemo(() => {
+    const callbacks = new Map<string, () => void>();
+    for (const tab of tabs) {
+      callbacks.set(tab.id, () => {
+        setSessionsLaunched(tab.id, true);
+      });
+    }
+    return callbacks;
+  }, [tabs, setSessionsLaunched]);
 
-  const setGridRef = useCallback(
-    (tabId: string) => (handle: TerminalGridHandle | null) => {
-      if (handle) {
-        gridRefs.current.set(tabId, handle);
-      } else {
-        gridRefs.current.delete(tabId);
-      }
-    },
-    []
-  );
+  // Stable ref setters per tab
+  const gridRefSetters = useMemo(() => {
+    const setters = new Map<string, (handle: TerminalGridHandle | null) => void>();
+    for (const tab of tabs) {
+      setters.set(tab.id, (handle: TerminalGridHandle | null) => {
+        if (handle) {
+          gridRefs.current.set(tab.id, handle);
+        } else {
+          gridRefs.current.delete(tab.id);
+        }
+      });
+    }
+    return setters;
+  }, [tabs]);
 
   // No projects open - show placeholder grid
   if (tabs.length === 0) {
@@ -95,14 +108,14 @@ export const MultiProjectView = forwardRef<MultiProjectViewHandle, MultiProjectV
         >
           {tab.sessionsLaunched ? (
             <TerminalGrid
-              ref={setGridRef(tab.id)}
+              ref={gridRefSetters.get(tab.id)}
               tabId={tab.id}
               projectPath={tab.projectPath}
               preserveOnHide={true}
-              onSessionCountChange={handleSessionCountChange(tab.id)}
+              onSessionCountChange={sessionCountChangeCallbacks.get(tab.id)}
             />
           ) : (
-            <IdleLandingView onAdd={handleLaunch(tab.id)} />
+            <IdleLandingView onAdd={launchCallbacks.get(tab.id)!} />
           )}
         </div>
       ))}

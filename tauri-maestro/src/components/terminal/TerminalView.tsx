@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 import { killSession, onPtyOutput, resizePty, writeStdin } from "@/lib/terminal";
+import { useMcpStore } from "@/stores/useMcpStore";
 import { type AiMode, type BackendSessionStatus, useSessionStore } from "@/stores/useSessionStore";
 import { QuickActionPills } from "./QuickActionPills";
 import { type AIProvider, type SessionStatus, TerminalHeader } from "./TerminalHeader";
@@ -90,6 +91,15 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
   const effectiveStatus = sessionConfig ? mapStatus(sessionConfig.status) : status;
   const effectiveProvider = sessionConfig ? mapAiMode(sessionConfig.mode) : "claude";
   const effectiveBranch = sessionConfig?.branch ?? "Current";
+  const isWorktree = Boolean(sessionConfig?.worktree_path);
+  const projectPath = sessionConfig?.project_path ?? "";
+
+  // Get MCP count for this session (primitive values are stable, no reference issues)
+  const mcpCount = useMcpStore((s) => {
+    if (!projectPath) return 0;
+    return s.getEnabledCount(projectPath, sessionId);
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -223,7 +233,9 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
         sessionId={sessionId}
         provider={effectiveProvider}
         status={effectiveStatus}
+        mcpCount={mcpCount}
         branchName={effectiveBranch}
+        isWorktree={isWorktree}
         onKill={handleKill}
       />
 

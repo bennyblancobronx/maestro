@@ -24,6 +24,7 @@ interface TerminalHeaderProps {
   statusMessage?: string;
   branchName?: string;
   showLaunch?: boolean;
+  isWorktree?: boolean;
   onKill: (sessionId: number) => void;
   onLaunch?: () => void;
 }
@@ -62,6 +63,7 @@ export function TerminalHeader({
   statusMessage,
   branchName = "Current",
   showLaunch = false,
+  isWorktree = false,
   onKill,
   onLaunch,
 }: TerminalHeaderProps) {
@@ -132,18 +134,28 @@ export function TerminalHeader({
 
       {/* Right cluster */}
       <div className="flex shrink-0 items-center gap-1">
-        {/* Branch selector */}
-        <button
-          type="button"
-          aria-label={`Select branch, current: ${branchName || "none"}`}
-          aria-disabled="true"
-          title="Branch selection not yet available"
-          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
-        >
-          <GitBranch size={10} />
-          <span className="max-w-[60px] truncate">{branchName}</span>
-          <ChevronDown size={9} />
-        </button>
+        {/* Branch display - static when on worktree, button otherwise */}
+        {isWorktree ? (
+          <span
+            className="flex items-center gap-0.5 px-1 py-0.5 text-[10px] text-maestro-muted"
+            title={`Worktree branch: ${branchName}`}
+          >
+            <GitBranch size={10} />
+            <span className="max-w-[60px] truncate">{branchName}</span>
+          </span>
+        ) : (
+          <button
+            type="button"
+            aria-label={`Select branch, current: ${branchName || "none"}`}
+            aria-disabled="true"
+            title="Branch selection not yet available"
+            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
+          >
+            <GitBranch size={10} />
+            <span className="max-w-[60px] truncate">{branchName}</span>
+            <ChevronDown size={9} />
+          </button>
+        )}
 
         {/* Launch button (pre-launch only) */}
         {showLaunch && (
@@ -161,15 +173,17 @@ export function TerminalHeader({
           {STATUS_LABEL[status]}
         </span>
 
-        {/* Per-session settings gear */}
-        <button
-          type="button"
-          className="rounded p-0.5 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
-          title="Session settings"
-          aria-label="Session settings"
-        >
-          <Settings size={11} />
-        </button>
+        {/* Per-session settings gear - hidden on worktree */}
+        {!isWorktree && (
+          <button
+            type="button"
+            className="rounded p-0.5 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text"
+            title="Session settings"
+            aria-label="Session settings"
+          >
+            <Settings size={11} />
+          </button>
+        )}
 
         {/* Close button */}
         <button
