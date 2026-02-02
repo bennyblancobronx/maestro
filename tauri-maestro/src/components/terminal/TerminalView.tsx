@@ -139,8 +139,11 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      fontFamily: "'JetBrainsMono Nerd Font', 'FiraCode Nerd Font', 'CaskaydiaCove Nerd Font', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       theme: toXtermTheme(DEFAULT_THEME),
+      allowProposedApi: true,
+      scrollback: 10000,
+      tabStopWidth: 8,
     });
 
     const fitAddon = new FitAddon();
