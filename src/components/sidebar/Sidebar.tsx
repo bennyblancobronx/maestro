@@ -2,6 +2,7 @@ import {
   Activity,
   AlertTriangle,
   Bot,
+  Check,
   ChevronDown,
   ChevronRight,
   Circle,
@@ -11,6 +12,7 @@ import {
   GitBranch,
   Globe,
   Home,
+  Loader2,
   Moon,
   Package,
   Play,
@@ -40,7 +42,9 @@ import { GitSettingsModal, RemoteStatusIndicator } from "@/components/git";
 import { QuickActionsManager } from "@/components/quickactions/QuickActionsManager";
 import { MarketplaceBrowser } from "@/components/marketplace";
 import { McpServerEditorModal } from "@/components/mcp";
+import { ClaudeMdEditorModal } from "@/components/claudemd";
 import type { McpCustomServer } from "@/lib/mcp";
+import { checkClaudeMd, type ClaudeMdStatus } from "@/lib/claudemd";
 
 type SidebarTab = "config" | "processes";
 
@@ -417,26 +421,124 @@ function GitRepositorySection() {
 /* ── 2. Project Context ── */
 
 function ProjectContextSection() {
+  const [showEditor, setShowEditor] = useState(false);
+  const [status, setStatus] = useState<ClaudeMdStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const tabs = useWorkspaceStore((s) => s.tabs);
+  const activeTab = tabs.find((t) => t.active);
+  const projectPath = activeTab?.projectPath ?? "";
+
+  const checkStatus = useCallback(async () => {
+    if (!projectPath) {
+      setStatus(null);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const result = await checkClaudeMd(projectPath);
+      setStatus(result);
+    } catch (err) {
+      console.error("Failed to check CLAUDE.md:", err);
+      setStatus(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectPath]);
+
+  // Check status on mount and when project changes
+  useEffect(() => {
+    checkStatus();
+  }, [checkStatus]);
+
+  const handleClick = () => {
+    if (projectPath) {
+      setShowEditor(true);
+    }
+  };
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await checkStatus();
+  };
+
+  const fileExists = status?.exists ?? false;
+
+  // No project selected
+  if (!projectPath) {
+    return (
+      <div className={cardClass}>
+        <SectionHeader
+          icon={FileText}
+          label="Project Context"
+          iconColor="text-maestro-muted"
+        />
+        <div className="flex items-center gap-2 px-1 py-1">
+          <span className="text-xs text-maestro-muted">No project selected</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={cardClass}>
-      <SectionHeader
-        icon={FileText}
-        label="Project Context"
-        iconColor="text-maestro-orange"
-        right={
-          <button type="button" className="rounded p-0.5 hover:bg-maestro-border/40">
-            <RefreshCw size={12} className="text-maestro-muted" />
-          </button>
-        }
-      />
-      <div className="flex items-center gap-2 px-1 py-1">
-        <AlertTriangle size={13} className="text-maestro-orange shrink-0" />
-        <span className="text-xs text-maestro-text">No CLAUDE.md</span>
+    <>
+      <div
+        className={`${cardClass} cursor-pointer`}
+        onClick={handleClick}
+      >
+        <SectionHeader
+          icon={FileText}
+          label="Project Context"
+          iconColor={fileExists ? "text-maestro-green" : "text-maestro-orange"}
+          right={
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="rounded p-0.5 hover:bg-maestro-border/40"
+              disabled={isLoading}
+            >
+              <RefreshCw
+                size={12}
+                className={`text-maestro-muted ${isLoading ? "animate-spin" : ""}`}
+              />
+            </button>
+          }
+        />
+        {isLoading ? (
+          <div className="flex items-center gap-2 px-1 py-1">
+            <Loader2 size={13} className="text-maestro-muted shrink-0 animate-spin" />
+            <span className="text-xs text-maestro-muted">Checking...</span>
+          </div>
+        ) : fileExists ? (
+          <div className="flex items-center gap-2 px-1 py-1">
+            <Check size={13} className="text-maestro-green shrink-0" />
+            <span className="text-xs text-maestro-text">CLAUDE.md</span>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 px-1 py-1">
+              <AlertTriangle size={13} className="text-maestro-orange shrink-0" />
+              <span className="text-xs text-maestro-text">No CLAUDE.md</span>
+            </div>
+            <div className="pl-7 text-[11px] text-maestro-muted">
+              Click to create project context file
+            </div>
+          </>
+        )}
       </div>
-      <div className="pl-7 text-[11px] text-maestro-muted">
-        Click to create project context file
-      </div>
-    </div>
+
+      {showEditor && projectPath && (
+        <ClaudeMdEditorModal
+          projectPath={projectPath}
+          exists={fileExists}
+          initialContent={status?.content ?? undefined}
+          onClose={() => setShowEditor(false)}
+          onSaved={() => {
+            checkStatus();
+          }}
+        />
+      )}
+    </>
   );
 }
 

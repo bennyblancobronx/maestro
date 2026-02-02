@@ -129,6 +129,8 @@ pub fn run() {
             commands::plugin::load_project_skill_defaults,
             commands::plugin::save_project_plugin_defaults,
             commands::plugin::load_project_plugin_defaults,
+            commands::plugin::write_session_plugin_config,
+            commands::plugin::remove_session_plugin_config,
             // Marketplace commands
             commands::marketplace::load_marketplace_data,
             commands::marketplace::get_marketplace_sources,
@@ -145,6 +147,10 @@ pub fn run() {
             commands::marketplace::get_session_marketplace_config,
             commands::marketplace::set_marketplace_plugin_enabled,
             commands::marketplace::clear_session_marketplace_config,
+            // ClaudeMd commands
+            commands::claudemd::check_claude_md,
+            commands::claudemd::read_claude_md,
+            commands::claudemd::write_claude_md,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Maestro");

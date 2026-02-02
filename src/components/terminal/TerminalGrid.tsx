@@ -3,8 +3,16 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { invoke } from "@tauri-apps/api/core";
 
 import { getBranchesWithWorktreeStatus, type BranchWithWorktreeStatus } from "@/lib/git";
+import { getInstalledPlugins } from "@/lib/marketplace";
 import { removeSessionMcpConfig, setSessionMcpServers, writeSessionMcpConfig, type McpServerConfig } from "@/lib/mcp";
-import { setSessionSkills, setSessionPlugins, type PluginConfig, type SkillConfig } from "@/lib/plugins";
+import {
+  removeSessionPluginConfig,
+  setSessionPlugins,
+  setSessionSkills,
+  writeSessionPluginConfig,
+  type PluginConfig,
+  type SkillConfig,
+} from "@/lib/plugins";
 import {
   AI_CLI_CONFIG,
   assignSessionBranch,
@@ -365,6 +373,22 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
                 console.error("Failed to write MCP config:", err);
                 // Non-fatal - continue with CLI launch, MCP servers just won't be available
               }
+
+              // Write plugin config to .claude/settings.local.json
+              // This allows Claude CLI to discover installed plugins and their components
+              try {
+                const installedPlugins = await getInstalledPlugins();
+                const enabledPaths = installedPlugins
+                  .filter((p) => slot.enabledPlugins.includes(p.id))
+                  .map((p) => p.path);
+
+                if (enabledPaths.length > 0) {
+                  await writeSessionPluginConfig(workingDirectory, enabledPaths);
+                }
+              } catch (err) {
+                console.error("Failed to write plugin config:", err);
+                // Non-fatal - continue with CLI launch, plugins just won't be available
+              }
             }
 
             // Brief delay for shell to initialize (reduced from 500ms)
@@ -433,6 +457,11 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     // Clean up session-specific MCP config (fire-and-forget)
     if (workingDir) {
       removeSessionMcpConfig(workingDir, sessionId).catch(console.error);
+    }
+
+    // Clean up session-specific plugin config (fire-and-forget)
+    if (workingDir) {
+      removeSessionPluginConfig(workingDir).catch(console.error);
     }
 
     // Clean up worktree if one was created (fire-and-forget)
