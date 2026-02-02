@@ -269,10 +269,10 @@
 }
 
 .terminal-cell-working {
-  border-color: rgb(var(--maestro-green));
+  border-color: rgb(var(--maestro-accent));
   box-shadow:
-    0 0 12px rgba(63, 185, 80, 0.4),
-    0 0 24px rgba(63, 185, 80, 0.2);
+    0 0 12px rgba(88, 166, 255, 0.4),
+    0 0 24px rgba(88, 166, 255, 0.2);
 }
 
 .terminal-cell-needs-input {
@@ -283,10 +283,10 @@
 }
 
 .terminal-cell-done {
-  border-color: rgb(var(--maestro-accent));
+  border-color: rgb(var(--maestro-green));
   box-shadow:
-    0 0 10px rgba(88, 166, 255, 0.3),
-    0 0 20px rgba(88, 166, 255, 0.15);
+    0 0 10px rgba(63, 185, 80, 0.3),
+    0 0 20px rgba(63, 185, 80, 0.15);
 }
 
 .terminal-cell-error {

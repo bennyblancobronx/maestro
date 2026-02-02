@@ -6,7 +6,6 @@ import {
   Loader2,
   Minus,
   PanelLeft,
-  Settings,
   Square,
   X,
 } from "lucide-react";
@@ -146,16 +145,6 @@ export function TopBar({
 
       {/* Right: action icons */}
       <div className="flex items-center gap-0.5 mr-1">
-        {/* TODO: Wire settings panel when settings feature is added */}
-        <button
-          type="button"
-          disabled
-          className="rounded p-1.5 text-maestro-muted transition-colors hover:bg-maestro-card hover:text-maestro-text disabled:opacity-50 disabled:cursor-not-allowed"
-          aria-label="Settings"
-          title="Settings (coming soon)"
-        >
-          <Settings size={14} />
-        </button>
         <button
           type="button"
           onClick={onToggleGitPanel}

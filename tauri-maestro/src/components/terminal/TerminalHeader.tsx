@@ -30,11 +30,11 @@ interface TerminalHeaderProps {
 }
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
-  idle: "text-maestro-accent",
+  idle: "text-maestro-muted",
   starting: "text-maestro-orange",
-  working: "text-maestro-green",
+  working: "text-maestro-accent",
   "needs-input": "text-maestro-yellow",
-  done: "text-maestro-accent",
+  done: "text-maestro-green",
   error: "text-maestro-red",
 };
 

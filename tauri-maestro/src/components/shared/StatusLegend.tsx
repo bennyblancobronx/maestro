@@ -6,10 +6,10 @@ const STATUS_DEFS: {
   colorClass: string;
 }[] = [
   { key: "Starting", label: "Starting...", colorClass: "bg-orange-400" },
-  { key: "Idle", label: "Idle", colorClass: "bg-blue-400" },
-  { key: "Working", label: "Working", colorClass: "bg-emerald-400" },
+  { key: "Idle", label: "Idle", colorClass: "bg-maestro-muted" },
+  { key: "Working", label: "Working", colorClass: "bg-maestro-accent" },
   { key: "NeedsInput", label: "Needs Input", colorClass: "bg-yellow-300" },
-  { key: "Done", label: "Done", colorClass: "bg-green-400" },
+  { key: "Done", label: "Done", colorClass: "bg-maestro-green" },
   { key: "Error", label: "Error", colorClass: "bg-red-400" },
 ];
 

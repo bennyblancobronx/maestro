@@ -14,3 +14,23 @@ claude.md
 
 # Local MCP configuration (contains machine-specific paths)
 .mcp.json
+
+# Claude Code local config
+.claude/
+
+# Gemini local config
+.gemini/
+
+# Plugins config
+.plugins.json
+
+# Build artifacts
+*.dmg
+*.zip
+
+# MCP server
+maestro-mcp-server/
+
+# Notes
+plan.md
+reddit-post.md
