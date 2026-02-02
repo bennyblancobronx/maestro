@@ -34,7 +34,7 @@ const STATUS_COLOR: Record<SessionStatus, string> = {
   starting: "text-maestro-orange",
   working: "text-maestro-accent",
   "needs-input": "text-maestro-yellow",
-  done: "text-maestro-accent",
+  done: "text-maestro-green",
   error: "text-maestro-red",
 };
 

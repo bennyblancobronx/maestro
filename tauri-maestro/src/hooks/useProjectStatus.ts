@@ -22,7 +22,7 @@ export const STATUS_COLORS: Record<ProjectStatus, string> = {
   starting: "bg-orange-500",
   working: "bg-maestro-accent",
   "needs-input": "bg-yellow-500",
-  done: "bg-maestro-accent",
+  done: "bg-maestro-green",
   error: "bg-red-500",
 };
 

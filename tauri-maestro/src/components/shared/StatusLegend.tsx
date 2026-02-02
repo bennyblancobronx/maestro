@@ -9,7 +9,7 @@ const STATUS_DEFS: {
   { key: "Idle", label: "Idle", colorClass: "bg-maestro-muted" },
   { key: "Working", label: "Working", colorClass: "bg-maestro-accent" },
   { key: "NeedsInput", label: "Needs Input", colorClass: "bg-yellow-300" },
-  { key: "Done", label: "Done", colorClass: "bg-maestro-accent" },
+  { key: "Done", label: "Done", colorClass: "bg-maestro-green" },
   { key: "Error", label: "Error", colorClass: "bg-red-400" },
 ];
 

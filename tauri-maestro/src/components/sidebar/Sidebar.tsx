@@ -60,7 +60,7 @@ const STATUS_DOT_CLASS: Record<BackendSessionStatus, string> = {
   Idle: "bg-maestro-muted",
   Working: "bg-maestro-accent",
   NeedsInput: "bg-maestro-yellow",
-  Done: "bg-maestro-accent",
+  Done: "bg-maestro-green",
   Error: "bg-maestro-red",
 };
 
