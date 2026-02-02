@@ -57,8 +57,8 @@ const SIDEBAR_WIDTH_STEP = 4;
 
 const STATUS_DOT_CLASS: Record<BackendSessionStatus, string> = {
   Starting: "bg-maestro-orange",
-  Idle: "bg-maestro-accent",
-  Working: "bg-maestro-green",
+  Idle: "bg-maestro-muted",
+  Working: "bg-maestro-accent",
   NeedsInput: "bg-maestro-yellow",
   Done: "bg-maestro-accent",
   Error: "bg-maestro-red",
