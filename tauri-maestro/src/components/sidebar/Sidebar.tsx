@@ -177,7 +177,7 @@ export function Sidebar({ collapsed, onCollapse, theme, onToggleTheme }: Sidebar
           onClick={() => setActiveTab("config")}
           className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[11px] font-semibold tracking-wide uppercase ${
             activeTab === "config"
-              ? "border-b-2 border-maestro-green text-maestro-green"
+              ? "border-b-2 border-maestro-accent text-maestro-accent"
               : "text-maestro-muted hover:text-maestro-text"
           }`}
         >
@@ -547,8 +547,8 @@ function StatusSection() {
     <div className={cardClass}>
       <SectionHeader icon={Activity} label="Status" iconColor="text-maestro-accent" />
       <div className="space-y-0.5">
-        {/* AI mode buckets */}
-        {AI_MODES.map((mode) => {
+        {/* AI mode buckets - only show modes with count > 0 */}
+        {AI_MODES.filter((mode) => counts.mode[mode] > 0).map((mode) => {
           const ModeIcon = MODE_ICON[mode];
           return (
             <div
@@ -561,8 +561,13 @@ function StatusSection() {
             </div>
           );
         })}
-        {/* Session status buckets */}
-        {SESSION_STATUSES.map((st) => (
+        {/* Divider between types and states - only show if both sections have items */}
+        {AI_MODES.some((mode) => counts.mode[mode] > 0) &&
+          SESSION_STATUSES.some((st) => counts.status[st] > 0) && (
+            <div className="h-px bg-maestro-border/40 my-1.5" />
+          )}
+        {/* Session status buckets - only show statuses with count > 0 */}
+        {SESSION_STATUSES.filter((st) => counts.status[st] > 0).map((st) => (
           <div
             key={st}
             className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-maestro-text"
@@ -572,6 +577,11 @@ function StatusSection() {
             <span className="font-semibold text-maestro-text">{counts.status[st]}</span>
           </div>
         ))}
+        {/* Empty state when no sessions */}
+        {!AI_MODES.some((mode) => counts.mode[mode] > 0) &&
+          !SESSION_STATUSES.some((st) => counts.status[st] > 0) && (
+            <div className="px-2 py-1 text-[11px] text-maestro-muted/60">No active sessions</div>
+          )}
       </div>
     </div>
   );
