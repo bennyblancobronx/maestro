@@ -48,13 +48,16 @@ export function MarketplaceBrowser({ onClose, currentProjectPath }: MarketplaceB
   // Close on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      // Don't close browser if install modal is open
+      if (installPlugin) return;
+
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  }, [onClose, installPlugin]);
 
   // Close on Escape
   useEffect(() => {
