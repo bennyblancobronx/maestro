@@ -3,13 +3,11 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { invoke } from "@tauri-apps/api/core";
 
 import { getBranchesWithWorktreeStatus, type BranchWithWorktreeStatus } from "@/lib/git";
-import { getInstalledPlugins } from "@/lib/marketplace";
 import { removeSessionMcpConfig, setSessionMcpServers, writeSessionMcpConfig, type McpServerConfig } from "@/lib/mcp";
 import {
   removeSessionPluginConfig,
   setSessionPlugins,
   setSessionSkills,
-  writeSessionPluginConfig,
   type PluginConfig,
   type SkillConfig,
 } from "@/lib/plugins";
@@ -374,21 +372,9 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
                 // Non-fatal - continue with CLI launch, MCP servers just won't be available
               }
 
-              // Write plugin config to .claude/settings.local.json
-              // This allows Claude CLI to discover installed plugins and their components
-              try {
-                const installedPlugins = await getInstalledPlugins();
-                const enabledPaths = installedPlugins
-                  .filter((p) => slot.enabledPlugins.includes(p.id))
-                  .map((p) => p.path);
-
-                if (enabledPaths.length > 0) {
-                  await writeSessionPluginConfig(workingDirectory, enabledPaths);
-                }
-              } catch (err) {
-                console.error("Failed to write plugin config:", err);
-                // Non-fatal - continue with CLI launch, plugins just won't be available
-              }
+              // NOTE: We no longer write plugin config to settings.local.json
+              // Claude CLI auto-discovers plugins from ~/.claude/plugins/
+              // Writing a `plugins` array was interfering with auto-discovery
             }
 
             // Brief delay for shell to initialize (reduced from 500ms)

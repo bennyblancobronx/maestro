@@ -131,6 +131,8 @@ pub fn run() {
             commands::plugin::load_project_plugin_defaults,
             commands::plugin::write_session_plugin_config,
             commands::plugin::remove_session_plugin_config,
+            commands::plugin::delete_skill,
+            commands::plugin::delete_plugin,
             // Marketplace commands
             commands::marketplace::load_marketplace_data,
             commands::marketplace::get_marketplace_sources,

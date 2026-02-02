@@ -1,6 +1,6 @@
 //! IPC commands for plugin/skill discovery and session configuration.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
@@ -271,4 +271,118 @@ pub async fn write_session_plugin_config(
 #[tauri::command]
 pub async fn remove_session_plugin_config(working_dir: String) -> Result<(), String> {
     plugin_config_writer::remove_session_plugin_config(Path::new(&working_dir)).await
+}
+
+/// Deletes a skill directory from the filesystem.
+///
+/// For security, this command only allows deletion of paths that are within:
+/// - A project's `.claude/skills/` directory
+/// - The user's `~/.claude/skills/` directory
+///
+/// This prevents accidental or malicious deletion of arbitrary files.
+#[tauri::command]
+pub async fn delete_skill(skill_path: String) -> Result<(), String> {
+    use directories::BaseDirs;
+
+    let skill_path = PathBuf::from(&skill_path);
+
+    // Canonicalize the path to resolve symlinks and relative paths
+    let canonical_path = skill_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid skill path '{}': {}", skill_path.display(), e))?;
+
+    // Get the user's home directory
+    let base_dirs = BaseDirs::new()
+        .ok_or_else(|| "Could not determine home directory".to_string())?;
+    let home_dir = base_dirs.home_dir();
+
+    // Build allowed paths
+    let personal_skills_dir = home_dir.join(".claude").join("skills");
+
+    // Check if the path is within allowed directories
+    let is_personal_skill = canonical_path.starts_with(&personal_skills_dir);
+
+    // Check if it's a project skill (path contains .claude/skills/)
+    let path_str = canonical_path.to_string_lossy();
+    let is_project_skill = path_str.contains("/.claude/skills/") || path_str.contains("\\.claude\\skills\\");
+
+    if !is_personal_skill && !is_project_skill {
+        return Err(format!(
+            "Cannot delete skill: path '{}' is not within .claude/skills/ or ~/.claude/skills/",
+            skill_path.display()
+        ));
+    }
+
+    // Verify it's a directory (skills are directories containing SKILL.md or command files)
+    if !canonical_path.is_dir() {
+        return Err(format!(
+            "Skill path '{}' is not a directory",
+            skill_path.display()
+        ));
+    }
+
+    // Delete the skill directory
+    tokio::fs::remove_dir_all(&canonical_path)
+        .await
+        .map_err(|e| format!("Failed to delete skill '{}': {}", skill_path.display(), e))?;
+
+    log::info!("Deleted skill directory: {}", canonical_path.display());
+    Ok(())
+}
+
+/// Deletes a plugin directory from the filesystem.
+///
+/// For security, this command only allows deletion of paths that are within:
+/// - The user's `~/.claude/plugins/` directory
+/// - A project's `.claude/plugins/` directory
+///
+/// This prevents accidental or malicious deletion of arbitrary files.
+#[tauri::command]
+pub async fn delete_plugin(plugin_path: String) -> Result<(), String> {
+    use directories::BaseDirs;
+
+    let plugin_path = PathBuf::from(&plugin_path);
+
+    // Canonicalize the path to resolve symlinks and relative paths
+    let canonical_path = plugin_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid plugin path '{}': {}", plugin_path.display(), e))?;
+
+    // Get the user's home directory
+    let base_dirs = BaseDirs::new()
+        .ok_or_else(|| "Could not determine home directory".to_string())?;
+    let home_dir = base_dirs.home_dir();
+
+    // Build allowed paths
+    let personal_plugins_dir = home_dir.join(".claude").join("plugins");
+
+    // Check if the path is within allowed directories
+    let is_personal_plugin = canonical_path.starts_with(&personal_plugins_dir);
+
+    // Check if it's a project plugin (path contains .claude/plugins/)
+    let path_str = canonical_path.to_string_lossy();
+    let is_project_plugin = path_str.contains("/.claude/plugins/") || path_str.contains("\\.claude\\plugins\\");
+
+    if !is_personal_plugin && !is_project_plugin {
+        return Err(format!(
+            "Cannot delete plugin: path '{}' is not within .claude/plugins/ or ~/.claude/plugins/",
+            plugin_path.display()
+        ));
+    }
+
+    // Verify it's a directory
+    if !canonical_path.is_dir() {
+        return Err(format!(
+            "Plugin path '{}' is not a directory",
+            plugin_path.display()
+        ));
+    }
+
+    // Delete the plugin directory
+    tokio::fs::remove_dir_all(&canonical_path)
+        .await
+        .map_err(|e| format!("Failed to delete plugin '{}': {}", plugin_path.display(), e))?;
+
+    log::info!("Deleted plugin directory: {}", canonical_path.display());
+    Ok(())
 }

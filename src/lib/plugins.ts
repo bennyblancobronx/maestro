@@ -281,3 +281,21 @@ export async function writeSessionPluginConfig(
 export async function removeSessionPluginConfig(workingDir: string): Promise<void> {
   return invoke("remove_session_plugin_config", { workingDir });
 }
+
+/**
+ * Deletes a skill directory from the filesystem.
+ *
+ * Only allows deletion of paths within .claude/skills/ (project) or ~/.claude/skills/ (personal).
+ */
+export async function deleteSkill(skillPath: string): Promise<void> {
+  return invoke("delete_skill", { skillPath });
+}
+
+/**
+ * Deletes a plugin directory from the filesystem.
+ *
+ * Only allows deletion of paths within .claude/plugins/ (project) or ~/.claude/plugins/ (personal).
+ */
+export async function deletePlugin(pluginPath: string): Promise<void> {
+  return invoke("delete_plugin", { pluginPath });
+}

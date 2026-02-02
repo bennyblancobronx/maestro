@@ -36,6 +36,7 @@ import { type AiMode, type BackendSessionStatus, useSessionStore } from "@/store
 import { useGitStore } from "@/stores/useGitStore";
 import { useMcpStore } from "@/stores/useMcpStore";
 import { usePluginStore } from "@/stores/usePluginStore";
+import { useMarketplaceStore } from "@/stores/useMarketplaceStore";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
 import { useProcessTreeStore, type ProcessInfo, type SessionProcessTree } from "@/stores/useProcessTreeStore";
 import { GitSettingsModal, RemoteStatusIndicator } from "@/components/git";
@@ -963,8 +964,10 @@ function PluginsSection() {
   const activeTab = tabs.find((t) => t.active);
   const projectPath = activeTab?.projectPath ?? "";
 
-  const { projectSkills, projectPlugins, fetchProjectPlugins, refreshProjectPlugins, isLoading } =
+  const { projectSkills, projectPlugins, fetchProjectPlugins, refreshProjectPlugins, isLoading, deleteSkill, deletingSkillId, deletePlugin, deletingPluginId } =
     usePluginStore();
+  const { uninstallPluginById, uninstallingPluginId, installedPlugins, fetchAll: fetchMarketplace, isLoading: marketplaceLoading } = useMarketplaceStore();
+  const [marketplaceFetched, setMarketplaceFetched] = useState(false);
   const skills = projectPath ? (projectSkills[projectPath] ?? []) : [];
   const plugins = projectPath ? (projectPlugins[projectPath] ?? []) : [];
   const loading = projectPath ? (isLoading[projectPath] ?? false) : false;
@@ -1022,11 +1025,64 @@ function PluginsSection() {
     }
   }, [projectPath, fetchProjectPlugins]);
 
+  // Ensure marketplace data is loaded for uninstall functionality
+  useEffect(() => {
+    if (!marketplaceFetched && !marketplaceLoading) {
+      setMarketplaceFetched(true);
+      fetchMarketplace();
+    }
+  }, [marketplaceFetched, marketplaceLoading, fetchMarketplace]);
+
   const handleRefresh = useCallback(() => {
     if (projectPath) {
       refreshProjectPlugins(projectPath);
     }
   }, [projectPath, refreshProjectPlugins]);
+
+  // Handle uninstalling a plugin (installed or marketplace)
+  const handleUninstallPlugin = useCallback(async (e: React.MouseEvent, pluginId: string, pluginPath: string | null, pluginSource: string) => {
+    e.stopPropagation();
+
+    // For "installed" plugins (manually installed to ~/.claude/plugins/), delete directly
+    if (pluginSource === "installed" && pluginPath && projectPath) {
+      await deletePlugin(pluginId, pluginPath, projectPath);
+      return;
+    }
+
+    // For "marketplace" plugins, use the marketplace uninstall
+    const installedPlugin = installedPlugins.find(
+      (p) => p.path === pluginPath || p.plugin_id === pluginId || p.id === pluginId
+    );
+    if (installedPlugin) {
+      await uninstallPluginById(installedPlugin.id);
+      // Refresh both marketplace and plugins lists
+      await fetchMarketplace();
+      if (projectPath) {
+        await refreshProjectPlugins(projectPath);
+      }
+    } else {
+      console.warn("Could not find installed plugin to uninstall:", { pluginId, pluginPath, pluginSource, installedPlugins });
+    }
+  }, [installedPlugins, uninstallPluginById, fetchMarketplace, projectPath, refreshProjectPlugins, deletePlugin]);
+
+  // Handle deleting a standalone skill
+  const handleDeleteSkill = useCallback(async (e: React.MouseEvent, skillId: string, skillPath: string | null) => {
+    e.stopPropagation();
+    if (!skillPath || !projectPath) return;
+    // skill.path points to SKILL.md file, we need the parent directory
+    const skillDir = skillPath.replace(/\/[^/]+$/, ""); // Remove filename to get directory
+    await deleteSkill(skillId, skillDir, projectPath);
+  }, [deleteSkill, projectPath]);
+
+  // Check if a plugin can be uninstalled (installed or marketplace, not builtin)
+  const canUninstallPlugin = (plugin: typeof plugins[0]) => {
+    return plugin.plugin_source === "installed" || plugin.plugin_source === "marketplace";
+  };
+
+  // Check if a skill can be deleted (project or personal, not plugin-owned or legacy)
+  const canDeleteSkill = (skill: typeof skills[0]) => {
+    return (skill.source.type === "project" || skill.source.type === "personal") && skill.path;
+  };
 
   return (
     <div className={cardClass}>
@@ -1093,32 +1149,57 @@ function PluginsSection() {
                   {plugins.map((plugin) => {
                     const pluginSkills = pluginSkillsMap.get(plugin.name) ?? [];
                     const isPluginExpanded = expandedPlugins.has(plugin.id);
+                    // Check if plugin is being uninstalled/deleted
+                    const matchingInstalled = installedPlugins.find(
+                      (p) => p.path === plugin.path || p.plugin_id === plugin.id || p.id === plugin.id
+                    );
+                    const isUninstalling =
+                      deletingPluginId === plugin.id ||
+                      (matchingInstalled && uninstallingPluginId === matchingInstalled.id);
 
                     return (
                       <div key={plugin.id}>
                         {/* Plugin row - clickable to expand */}
-                        <button
-                          type="button"
-                          onClick={() => togglePlugin(plugin.id)}
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-maestro-text hover:bg-maestro-border/40"
+                        <div
+                          className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-maestro-text hover:bg-maestro-border/40"
                           title={plugin.description || plugin.path || undefined}
                         >
-                          {pluginSkills.length > 0 ? (
-                            isPluginExpanded ? (
-                              <ChevronDown size={10} className="shrink-0 text-maestro-muted" />
+                          <button
+                            type="button"
+                            onClick={() => togglePlugin(plugin.id)}
+                            className="flex items-center gap-2 flex-1 min-w-0"
+                          >
+                            {pluginSkills.length > 0 ? (
+                              isPluginExpanded ? (
+                                <ChevronDown size={10} className="shrink-0 text-maestro-muted" />
+                              ) : (
+                                <ChevronRight size={10} className="shrink-0 text-maestro-muted" />
+                              )
                             ) : (
-                              <ChevronRight size={10} className="shrink-0 text-maestro-muted" />
-                            )
-                          ) : (
-                            <span className="w-[10px]" />
-                          )}
-                          <Package size={12} className="shrink-0 text-maestro-purple" />
-                          <span className="flex-1 truncate font-medium text-left">{plugin.name}</span>
+                              <span className="w-[10px]" />
+                            )}
+                            <Package size={12} className="shrink-0 text-maestro-purple" />
+                            <span className="flex-1 truncate font-medium text-left">{plugin.name}</span>
+                          </button>
                           {pluginSkills.length > 0 && (
                             <span className="text-[10px] text-maestro-muted">{pluginSkills.length}</span>
                           )}
                           <span className="text-[10px] text-maestro-muted">v{plugin.version}</span>
-                        </button>
+                          {canUninstallPlugin(plugin) && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleUninstallPlugin(e, plugin.id, plugin.path, plugin.plugin_source)}
+                              disabled={isUninstalling}
+                              className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-maestro-red/10 transition-opacity"
+                              title="Uninstall plugin"
+                            >
+                              <Trash2
+                                size={10}
+                                className={isUninstalling ? "text-maestro-muted animate-pulse" : "text-maestro-red"}
+                              />
+                            </button>
+                          )}
+                        </div>
 
                         {/* Expanded skills */}
                         {isPluginExpanded && pluginSkills.length > 0 && (
@@ -1149,10 +1230,11 @@ function PluginsSection() {
                   </div>
                   {standaloneSkills.map((skill) => {
                     const badge = getSkillSourceBadge(skill.source);
+                    const isDeleting = deletingSkillId === skill.id;
                     return (
                       <div
                         key={skill.id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-maestro-text hover:bg-maestro-border/40"
+                        className="group flex items-center gap-2 rounded-md px-2 py-1 text-xs text-maestro-text hover:bg-maestro-border/40"
                         title={skill.description || skill.path || undefined}
                       >
                         <Zap size={12} className="shrink-0 text-maestro-orange" />
@@ -1160,6 +1242,20 @@ function PluginsSection() {
                         <span className={`shrink-0 rounded px-1 text-[9px] ${badge.className}`}>
                           {badge.text}
                         </span>
+                        {canDeleteSkill(skill) && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSkill(e, skill.id, skill.path)}
+                            disabled={isDeleting}
+                            className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-maestro-red/10 transition-opacity"
+                            title="Delete skill"
+                          >
+                            <Trash2
+                              size={10}
+                              className={isDeleting ? "text-maestro-muted animate-pulse" : "text-maestro-red"}
+                            />
+                          </button>
+                        )}
                       </div>
                     );
                   })}

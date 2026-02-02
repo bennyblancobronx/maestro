@@ -16,6 +16,8 @@ import {
   loadProjectSkillDefaults,
   saveProjectPluginDefaults,
   loadProjectPluginDefaults,
+  deleteSkill as deleteSkillApi,
+  deletePlugin as deletePluginApi,
   type PluginConfig,
   type SkillConfig,
 } from "@/lib/plugins";
@@ -49,6 +51,12 @@ interface PluginState {
 
   /** Error state per project. */
   errors: Record<string, string | null>;
+
+  /** ID of skill currently being deleted. */
+  deletingSkillId: string | null;
+
+  /** ID of plugin currently being deleted. */
+  deletingPluginId: string | null;
 
   /**
    * Fetches plugins/skills for a project (uses cache on backend).
@@ -135,6 +143,18 @@ interface PluginState {
    * Clears session state when a session is closed.
    */
   clearSession: (projectPath: string, sessionId: number) => void;
+
+  /**
+   * Deletes a standalone skill (project or personal).
+   * Refreshes the plugin list after deletion.
+   */
+  deleteSkill: (skillId: string, skillPath: string, projectPath: string) => Promise<void>;
+
+  /**
+   * Deletes a manually installed plugin (from ~/.claude/plugins/ or .claude/plugins/).
+   * Refreshes the plugin list after deletion.
+   */
+  deletePlugin: (pluginId: string, pluginPath: string, projectPath: string) => Promise<void>;
 }
 
 export const usePluginStore = create<PluginState>()((set, get) => ({
@@ -146,6 +166,8 @@ export const usePluginStore = create<PluginState>()((set, get) => ({
   projectDefaultPlugins: {},
   isLoading: {},
   errors: {},
+  deletingSkillId: null,
+  deletingPluginId: null,
 
   fetchProjectPlugins: async (projectPath: string) => {
     set((state) => ({
@@ -345,5 +367,39 @@ export const usePluginStore = create<PluginState>()((set, get) => ({
         sessionEnabledPlugins: restPlugins,
       };
     });
+  },
+
+  deleteSkill: async (skillId: string, skillPath: string, projectPath: string) => {
+    set({ deletingSkillId: skillId });
+
+    try {
+      await deleteSkillApi(skillPath);
+      // Refresh the plugin list to reflect the deletion
+      await get().refreshProjectPlugins(projectPath);
+    } catch (err) {
+      console.error(`Failed to delete skill ${skillId}:`, err);
+      set((state) => ({
+        errors: { ...state.errors, [projectPath]: String(err) },
+      }));
+    } finally {
+      set({ deletingSkillId: null });
+    }
+  },
+
+  deletePlugin: async (pluginId: string, pluginPath: string, projectPath: string) => {
+    set({ deletingPluginId: pluginId });
+
+    try {
+      await deletePluginApi(pluginPath);
+      // Refresh the plugin list to reflect the deletion
+      await get().refreshProjectPlugins(projectPath);
+    } catch (err) {
+      console.error(`Failed to delete plugin ${pluginId}:`, err);
+      set((state) => ({
+        errors: { ...state.errors, [projectPath]: String(err) },
+      }));
+    } finally {
+      set({ deletingPluginId: null });
+    }
   },
 }));
