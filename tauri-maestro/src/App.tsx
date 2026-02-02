@@ -234,7 +234,7 @@ function App() {
                 if (!activeTab || isStoppingAll) return;
                 setIsStoppingAll(true);
                 try {
-                  // Kill all running sessions for this project via the session store
+                  // Kill all running PTY sessions for this project
                   const sessionStore = useSessionStore.getState();
                   const projectSessions = sessionStore.getSessionsByProject(activeTab.projectPath);
                   const results = await Promise.allSettled(projectSessions.map((s) => killSession(s.id)));
@@ -243,6 +243,8 @@ function App() {
                       console.error("Failed to stop session:", result.reason);
                     }
                   }
+                  // Remove sessions from backend and local store
+                  await sessionStore.removeSessionsForProject(activeTab.projectPath);
                   setSessionsLaunched(activeTab.id, false);
                   setSessionCounts((prev) => {
                     const next = new Map(prev);
