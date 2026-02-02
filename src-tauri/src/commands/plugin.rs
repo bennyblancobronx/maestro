@@ -2,9 +2,19 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 use tauri_plugin_store::StoreExt;
+
+/// Configuration stored per branch for a project.
+/// This allows different branches to have different plugin/skill/MCP configurations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchConfig {
+    pub enabled_plugins: Vec<String>,
+    pub enabled_skills: Vec<String>,
+    pub enabled_mcp_servers: Vec<String>,
+}
 
 use crate::core::plugin_config_writer;
 use crate::core::plugin_manager::{PluginManager, ProjectPlugins};
@@ -385,4 +395,65 @@ pub async fn delete_plugin(plugin_path: String) -> Result<(), String> {
 
     log::info!("Deleted plugin directory: {}", canonical_path.display());
     Ok(())
+}
+
+/// Saves the plugin/skill/MCP configuration for a specific branch.
+///
+/// This allows per-branch configuration persistence. When a user selects
+/// a branch and configures plugins, that configuration is remembered
+/// for future sessions on the same branch.
+#[tauri::command]
+pub async fn save_branch_config(
+    app: AppHandle,
+    project_path: String,
+    branch: String,
+    enabled_plugins: Vec<String>,
+    enabled_skills: Vec<String>,
+    enabled_mcp_servers: Vec<String>,
+) -> Result<(), String> {
+    let canonical = std::fs::canonicalize(&project_path)
+        .map_err(|e| format!("Invalid project path '{}': {}", project_path, e))?
+        .to_string_lossy()
+        .into_owned();
+
+    let store_name = format!("maestro-{}.json", hash_project_path(&canonical));
+    let store = app.store(&store_name).map_err(|e| e.to_string())?;
+
+    let config = BranchConfig {
+        enabled_plugins,
+        enabled_skills,
+        enabled_mcp_servers,
+    };
+
+    let key = format!("branch_config:{}", branch);
+    store.set(&key, serde_json::json!(config));
+    store.save().map_err(|e| e.to_string())?;
+
+    log::debug!("Saved branch config for {}/{}", canonical, branch);
+    Ok(())
+}
+
+/// Loads the plugin/skill/MCP configuration for a specific branch.
+///
+/// Returns None if no configuration has been saved for this branch yet.
+#[tauri::command]
+pub async fn load_branch_config(
+    app: AppHandle,
+    project_path: String,
+    branch: String,
+) -> Result<Option<BranchConfig>, String> {
+    let canonical = std::fs::canonicalize(&project_path)
+        .map_err(|e| format!("Invalid project path '{}': {}", project_path, e))?
+        .to_string_lossy()
+        .into_owned();
+
+    let store_name = format!("maestro-{}.json", hash_project_path(&canonical));
+    let store = app.store(&store_name).map_err(|e| e.to_string())?;
+
+    let key = format!("branch_config:{}", branch);
+    let result = store
+        .get(&key)
+        .and_then(|v| serde_json::from_value::<BranchConfig>(v.clone()).ok());
+
+    Ok(result)
 }

@@ -299,3 +299,46 @@ export async function deleteSkill(skillPath: string): Promise<void> {
 export async function deletePlugin(pluginPath: string): Promise<void> {
   return invoke("delete_plugin", { pluginPath });
 }
+
+/**
+ * Configuration stored per branch for a project.
+ * This allows different branches to have different plugin/skill/MCP configurations.
+ */
+export interface BranchConfig {
+  enabled_plugins: string[];
+  enabled_skills: string[];
+  enabled_mcp_servers: string[];
+}
+
+/**
+ * Saves the plugin/skill/MCP configuration for a specific branch.
+ *
+ * This allows per-branch configuration persistence. When a user selects
+ * a branch and configures plugins, that configuration is remembered
+ * for future sessions on the same branch.
+ */
+export async function saveBranchConfig(
+  projectPath: string,
+  branch: string,
+  config: BranchConfig
+): Promise<void> {
+  return invoke("save_branch_config", {
+    projectPath,
+    branch,
+    enabledPlugins: config.enabled_plugins,
+    enabledSkills: config.enabled_skills,
+    enabledMcpServers: config.enabled_mcp_servers,
+  });
+}
+
+/**
+ * Loads the plugin/skill/MCP configuration for a specific branch.
+ *
+ * Returns null if no configuration has been saved for this branch yet.
+ */
+export async function loadBranchConfig(
+  projectPath: string,
+  branch: string
+): Promise<BranchConfig | null> {
+  return invoke<BranchConfig | null>("load_branch_config", { projectPath, branch });
+}

@@ -5,7 +5,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { getBranchesWithWorktreeStatus, type BranchWithWorktreeStatus } from "@/lib/git";
 import { removeSessionMcpConfig, setSessionMcpServers, writeSessionMcpConfig, type McpServerConfig } from "@/lib/mcp";
 import {
+  loadBranchConfig,
   removeSessionPluginConfig,
+  saveBranchConfig,
   setSessionPlugins,
   setSessionSkills,
   type PluginConfig,
@@ -150,6 +152,8 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
   // Refs for cleanup
   const slotsRef = useRef<SessionSlot[]>([]);
   const mounted = useRef(false);
+  // Track debounce timers for saving branch config (keyed by slot ID)
+  const branchConfigSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Compute launched slots for keyboard navigation
   const launchedSlots = useMemo(
@@ -265,6 +269,11 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // Clear any pending branch config save timers
+      for (const timer of branchConfigSaveTimers.current.values()) {
+        clearTimeout(timer);
+      }
+      branchConfigSaveTimers.current.clear();
       // Kill all launched sessions on unmount (unless preserving)
       if (!preserveOnHide) {
         for (const slot of slotsRef.current) {
@@ -284,6 +293,65 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
   }, [slots.length, error, mcpServers, skills, plugins]);
 
   /**
+   * Saves branch config with debouncing.
+   * Called when slot config changes (plugins, skills, MCP servers).
+   */
+  const debouncedSaveBranchConfig = useCallback((slot: SessionSlot) => {
+    if (!projectPath || !slot.branch) return;
+
+    // Clear existing timer for this slot
+    const existingTimer = branchConfigSaveTimers.current.get(slot.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Set new timer
+    const timer = setTimeout(() => {
+      saveBranchConfig(projectPath, slot.branch!, {
+        enabled_plugins: slot.enabledPlugins,
+        enabled_skills: slot.enabledSkills,
+        enabled_mcp_servers: slot.enabledMcpServers,
+      }).catch((err) => {
+        console.error("Failed to save branch config:", err);
+      });
+      branchConfigSaveTimers.current.delete(slot.id);
+    }, 500);
+
+    branchConfigSaveTimers.current.set(slot.id, timer);
+  }, [projectPath]);
+
+  // Save branch config when slot config changes (debounced)
+  // Track previous slots to detect config changes
+  const prevSlotsRef = useRef<SessionSlot[]>([]);
+  useEffect(() => {
+    // Compare each slot's config with previous state
+    for (const slot of slots) {
+      // Skip slots without a branch (non-worktree sessions)
+      if (!slot.branch) continue;
+      // Skip already-launched sessions (no need to save pre-launch config)
+      if (slot.sessionId !== null) continue;
+
+      const prevSlot = prevSlotsRef.current.find((s) => s.id === slot.id);
+      if (!prevSlot) continue; // New slot, no previous state
+
+      // Check if config changed (but not the branch itself - that's handled by updateSlotBranch)
+      const configChanged =
+        prevSlot.branch === slot.branch && // Same branch
+        (
+          JSON.stringify(prevSlot.enabledPlugins) !== JSON.stringify(slot.enabledPlugins) ||
+          JSON.stringify(prevSlot.enabledSkills) !== JSON.stringify(slot.enabledSkills) ||
+          JSON.stringify(prevSlot.enabledMcpServers) !== JSON.stringify(slot.enabledMcpServers)
+        );
+
+      if (configChanged) {
+        debouncedSaveBranchConfig(slot);
+      }
+    }
+
+    prevSlotsRef.current = slots;
+  }, [slots, debouncedSaveBranchConfig]);
+
+  /**
    * Launches a single slot by spawning a shell with the configured settings.
    * If a branch is selected, prepares a worktree for that branch first.
    */
@@ -292,6 +360,18 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     if (!slot || slot.sessionId !== null) return;
 
     try {
+      // Save branch config before launching (ensures it's persisted)
+      if (projectPath && slot.branch) {
+        await saveBranchConfig(projectPath, slot.branch, {
+          enabled_plugins: slot.enabledPlugins,
+          enabled_skills: slot.enabledSkills,
+          enabled_mcp_servers: slot.enabledMcpServers,
+        }).catch((err) => {
+          console.error("Failed to save branch config on launch:", err);
+          // Non-fatal - continue with launch
+        });
+      }
+
       // Determine the working directory
       // If a branch is selected, prepare a worktree first
       let workingDirectory = projectPath;
@@ -479,14 +559,40 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
 
   /**
    * Updates the branch for a slot.
+   * When a branch is selected, loads any saved config for that branch.
    */
-  const updateSlotBranch = useCallback((slotId: string, branch: string | null) => {
+  const updateSlotBranch = useCallback(async (slotId: string, branch: string | null) => {
+    // First update the branch
     setSlots((prev) =>
       prev.map((s) =>
         s.id === slotId ? { ...s, branch } : s
       )
     );
-  }, []);
+
+    // If a branch is selected and we have a project path, try to load saved config
+    if (branch && projectPath) {
+      try {
+        const savedConfig = await loadBranchConfig(projectPath, branch);
+        if (savedConfig) {
+          // Apply saved config to the slot
+          setSlots((prev) =>
+            prev.map((s) => {
+              if (s.id !== slotId) return s;
+              return {
+                ...s,
+                enabledPlugins: savedConfig.enabled_plugins,
+                enabledSkills: savedConfig.enabled_skills,
+                enabledMcpServers: savedConfig.enabled_mcp_servers,
+              };
+            })
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load branch config:", err);
+        // Non-fatal - continue with current slot config
+      }
+    }
+  }, [projectPath]);
 
   /**
    * Toggles an MCP server for a slot.

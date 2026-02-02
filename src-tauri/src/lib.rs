@@ -133,6 +133,8 @@ pub fn run() {
             commands::plugin::remove_session_plugin_config,
             commands::plugin::delete_skill,
             commands::plugin::delete_plugin,
+            commands::plugin::save_branch_config,
+            commands::plugin::load_branch_config,
             // Marketplace commands
             commands::marketplace::load_marketplace_data,
             commands::marketplace::get_marketplace_sources,
