@@ -1,10 +1,11 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-import { killSession, onPtyOutput, resizePty, writeStdin } from "@/lib/terminal";
+import { getBackendInfo, killSession, onPtyOutput, resizePty, writeStdin, type BackendInfo } from "@/lib/terminal";
+import { DEFAULT_THEME, toXtermTheme } from "@/lib/terminalTheme";
 import { useMcpStore } from "@/stores/useMcpStore";
 import { type AiMode, type BackendSessionStatus, useSessionStore } from "@/stores/useSessionStore";
 import { QuickActionPills } from "./QuickActionPills";
@@ -104,6 +105,17 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
+  // Backend capabilities (for future enhanced features like terminal state queries)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_backendInfo, setBackendInfo] = useState<BackendInfo | null>(null);
+
+  // Fetch backend info on mount (cached after first call)
+  useEffect(() => {
+    getBackendInfo()
+      .then(setBackendInfo)
+      .catch((err) => console.warn("Failed to get backend info:", err));
+  }, []);
+
   /**
    * Immediately removes the terminal from UI (optimistic update),
    * then kills the backend session in the background.
@@ -128,28 +140,7 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-      theme: {
-        background: "#0d1117",
-        foreground: "#e6edf3",
-        cursor: "#58a6ff",
-        selectionBackground: "#264f78",
-        black: "#484f58",
-        red: "#f85149",
-        green: "#3fb950",
-        yellow: "#d29922",
-        blue: "#58a6ff",
-        magenta: "#bc8cff",
-        cyan: "#76e3ea",
-        white: "#e6edf3",
-        brightBlack: "#6e7681",
-        brightRed: "#ffa198",
-        brightGreen: "#56d364",
-        brightYellow: "#e3b341",
-        brightBlue: "#79c0ff",
-        brightMagenta: "#d2a8ff",
-        brightCyan: "#b3f0ff",
-        brightWhite: "#f0f6fc",
-      },
+      theme: toXtermTheme(DEFAULT_THEME),
     });
 
     const fitAddon = new FitAddon();
@@ -233,6 +224,7 @@ export function TerminalView({ sessionId, status = "idle", onKill }: TerminalVie
         sessionId={sessionId}
         provider={effectiveProvider}
         status={effectiveStatus}
+        statusMessage={sessionConfig?.statusMessage || sessionConfig?.needsInputPrompt}
         mcpCount={mcpCount}
         branchName={effectiveBranch}
         isWorktree={isWorktree}

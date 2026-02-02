@@ -9,6 +9,15 @@ edition = "2021"
 name = "maestro_linux_lib"
 crate-type = ["lib"]
 
+[features]
+default = ["auto-backend"]
+# Automatically select the best backend for the platform
+auto-backend = []
+# Use VTE parser for terminal state tracking (cross-platform)
+vte-backend = ["vte"]
+# Force xterm.js passthrough on all platforms
+xterm-only = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -27,6 +36,9 @@ thiserror = "2"
 sha2 = "0.10"
 hex = "0.4"
 directories = "5"
+# VT sequence parsing (used by Alacritty)
+vte = { version = "0.14", optional = true }
+
 
 [profile.release]
 panic = "abort"

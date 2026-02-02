@@ -7,6 +7,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { BackendCapabilities, BackendType } from "./terminalTheme";
 
 /**
  * Spawns a new PTY shell session on the backend.
@@ -90,4 +91,31 @@ export function onPtyOutput(
   return listen<string>(`pty-output-${sessionId}`, (event) => {
     callback(event.payload);
   });
+}
+
+/** Backend info as returned by the Rust backend. */
+export interface BackendInfo {
+  backendType: BackendType;
+  capabilities: BackendCapabilities;
+}
+
+/** Cached backend info to avoid repeated IPC calls. */
+let cachedBackendInfo: BackendInfo | null = null;
+
+/**
+ * Returns information about the active terminal backend.
+ * The result is cached after the first call.
+ */
+export async function getBackendInfo(): Promise<BackendInfo> {
+  if (cachedBackendInfo) {
+    return cachedBackendInfo;
+  }
+  cachedBackendInfo = await invoke<BackendInfo>("get_backend_info");
+  return cachedBackendInfo;
+}
+
+/** Checks if the current backend supports enhanced terminal state. */
+export async function hasEnhancedState(): Promise<boolean> {
+  const info = await getBackendInfo();
+  return info.capabilities.enhancedState;
 }

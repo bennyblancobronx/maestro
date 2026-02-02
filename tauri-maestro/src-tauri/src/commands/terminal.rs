@@ -1,6 +1,71 @@
+use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use crate::core::{ProcessManager, PtyError};
+use crate::core::{BackendCapabilities, BackendType, ProcessManager, PtyError};
+
+/// Backend information returned to the frontend.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendInfo {
+    /// The active backend type.
+    pub backend_type: BackendType,
+    /// Backend capabilities.
+    pub capabilities: BackendCapabilitiesDto,
+}
+
+/// DTO for backend capabilities (frontend-friendly naming).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendCapabilitiesDto {
+    pub enhanced_state: bool,
+    pub text_reflow: bool,
+    pub kitty_graphics: bool,
+    pub shell_integration: bool,
+    pub backend_name: String,
+}
+
+impl From<BackendCapabilities> for BackendCapabilitiesDto {
+    fn from(caps: BackendCapabilities) -> Self {
+        Self {
+            enhanced_state: caps.enhanced_state,
+            text_reflow: caps.text_reflow,
+            kitty_graphics: caps.kitty_graphics,
+            shell_integration: caps.shell_integration,
+            backend_name: caps.backend_name.to_string(),
+        }
+    }
+}
+
+/// Returns information about the active terminal backend.
+///
+/// The frontend can use this to enable/disable features based on
+/// backend capabilities (e.g., enhanced terminal state queries).
+#[tauri::command]
+pub fn get_backend_info() -> BackendInfo {
+    let backend_type = BackendType::platform_default();
+
+    let capabilities = match backend_type {
+        BackendType::XtermPassthrough => BackendCapabilities {
+            enhanced_state: false,
+            text_reflow: false,
+            kitty_graphics: false,
+            shell_integration: false,
+            backend_name: "xterm-passthrough",
+        },
+        BackendType::VteParser => BackendCapabilities {
+            enhanced_state: true,
+            text_reflow: false,
+            kitty_graphics: false,
+            shell_integration: false,
+            backend_name: "vte-parser",
+        },
+    };
+
+    BackendInfo {
+        backend_type,
+        capabilities: capabilities.into(),
+    }
+}
 
 /// Exposes `ProcessManager::spawn_shell` to the frontend.
 ///

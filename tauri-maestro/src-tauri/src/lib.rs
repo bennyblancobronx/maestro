@@ -61,6 +61,7 @@ pub fn run() {
             commands::terminal::resize_pty,
             commands::terminal::kill_session,
             commands::terminal::check_cli_available,
+            commands::terminal::get_backend_info,
             // Git commands
             commands::git::git_branches,
             commands::git::git_current_branch,
