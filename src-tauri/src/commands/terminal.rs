@@ -6,6 +6,7 @@ use tauri::{AppHandle, State};
 
 use crate::core::session_manager::SessionManager;
 use crate::core::status_server::StatusServer;
+use crate::core::windows_process::TokioCommandExt;
 use crate::core::{BackendCapabilities, BackendType, ProcessManager, PtyError, SessionProcessTree};
 
 /// Backend information returned to the frontend.
@@ -263,6 +264,7 @@ pub async fn check_cli_available(command: String) -> Result<bool, String> {
     {
         let output = tokio::process::Command::new("where.exe")
             .arg(&command)
+            .hide_console_window()
             .output()
             .await
             .map_err(|e| format!("Failed to check CLI: {}", e))?;

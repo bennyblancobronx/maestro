@@ -578,8 +578,10 @@ impl TerminalBackend for VteBackend {
         #[cfg(windows)]
         {
             use std::process::Command;
+            use super::windows_process::StdCommandExt;
             let _ = Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .hide_console_window()
                 .output();
         }
 
