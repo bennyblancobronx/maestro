@@ -3,6 +3,7 @@ use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
 use super::error::GitError;
+use crate::core::windows_process::TokioCommandExt;
 
 /// Captured stdout/stderr from a completed git subprocess.
 ///
@@ -57,7 +58,8 @@ impl Git {
             .args(args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("LC_ALL", "C")
-            .kill_on_drop(true);
+            .kill_on_drop(true)
+            .hide_console_window();
 
         let command_str = format!("git -C {} {}", self.repo_path.display(), args.join(" "));
 

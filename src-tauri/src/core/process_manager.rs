@@ -464,9 +464,11 @@ impl ProcessManager {
         #[cfg(windows)]
         {
             use std::process::Command;
+            use super::windows_process::StdCommandExt;
             // Use taskkill to terminate process tree
             let result = Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .hide_console_window()
                 .output();
 
             if let Err(e) = result {

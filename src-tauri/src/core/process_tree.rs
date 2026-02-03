@@ -231,9 +231,11 @@ pub async fn kill_process(pid: u32, session_root_pids: &[i32]) -> Result<(), Pro
     #[cfg(windows)]
     {
         use std::process::Command;
+        use super::windows_process::StdCommandExt;
 
         let result = Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
+            .hide_console_window()
             .output();
 
         match result {

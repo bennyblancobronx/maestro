@@ -15,6 +15,7 @@ use tokio::process::Command;
 
 use super::marketplace_error::{MarketplaceError, MarketplaceResult};
 use super::marketplace_models::*;
+use super::windows_process::TokioCommandExt;
 
 /// Official Anthropic Claude Code marketplace.
 const OFFICIAL_MARKETPLACE_NAME: &str = "Claude Code Official";
@@ -330,6 +331,7 @@ impl MarketplaceManager {
         let output = Command::new("git")
             .args(["clone", "--depth", "1", repo_url])
             .arg(target_dir)
+            .hide_console_window()
             .output()
             .await
             .map_err(|e| MarketplaceError::CloneError(format!("Failed to run git: {}", e)))?;
@@ -369,6 +371,7 @@ impl MarketplaceManager {
                 repo_url,
             ])
             .arg(&temp_dir)
+            .hide_console_window()
             .output()
             .await
             .map_err(|e| MarketplaceError::CloneError(format!("Failed to run git clone: {}", e)))?;
@@ -386,6 +389,7 @@ impl MarketplaceManager {
         let output = Command::new("git")
             .args(["sparse-checkout", "set", "--no-cone", subpath])
             .current_dir(&temp_dir)
+            .hide_console_window()
             .output()
             .await
             .map_err(|e| {
@@ -405,6 +409,7 @@ impl MarketplaceManager {
         let output = Command::new("git")
             .args(["checkout"])
             .current_dir(&temp_dir)
+            .hide_console_window()
             .output()
             .await
             .map_err(|e| MarketplaceError::CloneError(format!("Failed to run git checkout: {}", e)))?;
