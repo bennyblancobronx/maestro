@@ -190,6 +190,8 @@ pub fn run() {
             // Font detection commands
             commands::fonts::get_available_fonts,
             commands::fonts::check_font_available,
+            // Usage tracking commands
+            commands::usage::get_claude_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Maestro");
