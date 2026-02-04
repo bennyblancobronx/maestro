@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { GitFork, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { killSession } from "@/lib/terminal";
+import { initPermissions } from "@/lib/permissions";
 import { useOpenProject } from "@/lib/useOpenProject";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
@@ -9,6 +10,7 @@ import { useGitStore } from "./stores/useGitStore";
 import { useTerminalSettingsStore } from "./stores/useTerminalSettingsStore";
 import { GitGraphPanel } from "./components/git/GitGraphPanel";
 import { BottomBar } from "./components/shared/BottomBar";
+import { FDADialog } from "./components/shared/FDADialog";
 import { MultiProjectView, type MultiProjectViewHandle } from "./components/shared/MultiProjectView";
 import { ProjectTabs } from "./components/shared/ProjectTabs";
 import { TopBar } from "./components/shared/TopBar";
@@ -29,7 +31,14 @@ function App() {
   const setSessionsLaunched = useWorkspaceStore((s) => s.setSessionsLaunched);
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
   const initListeners = useSessionStore((s) => s.initListeners);
-  const handleOpenProject = useOpenProject();
+  const {
+    openProject: handleOpenProject,
+    showFDADialog,
+    fdaPath,
+    dismissFDADialog,
+    dismissFDADialogPermanently,
+    retryAfterFDAGrant,
+  } = useOpenProject();
   const multiProjectRef = useRef<MultiProjectViewHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
@@ -83,6 +92,13 @@ function App() {
       console.error("Failed to initialize terminal settings:", err);
     });
   }, [initializeTerminalSettings]);
+
+  // Initialize macOS permissions module
+  useEffect(() => {
+    initPermissions().catch((err) => {
+      console.error("Failed to initialize permissions:", err);
+    });
+  }, []);
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
   const activeTab = tabs.find((tab) => tab.active) ?? null;
@@ -283,6 +299,15 @@ function App() {
         </div>
       </div>
 
+      {/* FDA Dialog for macOS TCC-protected paths */}
+      {showFDADialog && (
+        <FDADialog
+          path={fdaPath}
+          onDismiss={dismissFDADialog}
+          onDismissPermanently={dismissFDADialogPermanently}
+          onRetry={retryAfterFDAGrant}
+        />
+      )}
     </div>
   );
 }
