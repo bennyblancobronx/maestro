@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-02-06T16:36:20.247Z",
+  "projectRoot": "/Volumes/Jay/projects/maestro",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": true,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1770395780247
+}
