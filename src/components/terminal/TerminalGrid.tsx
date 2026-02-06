@@ -135,6 +135,7 @@ interface TerminalGridProps {
   projectPath?: string;
   tabId?: string;
   preserveOnHide?: boolean;
+  isActive?: boolean;
   onSessionCountChange?: (slotCount: number, launchedCount: number) => void;
 }
 
@@ -152,7 +153,7 @@ interface TerminalGridProps {
  *   a fresh slot so the user is never left with an empty grid.
  */
 export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(function TerminalGrid(
-  { projectPath, tabId, preserveOnHide = false, onSessionCountChange },
+  { projectPath, tabId, preserveOnHide = false, isActive = true, onSessionCountChange },
   ref,
 ) {
   const addSessionToProject = useWorkspaceStore((s) => s.addSessionToProject);
@@ -190,6 +191,18 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
   const mounted = useRef(false);
   // Track debounce timers for saving branch config (keyed by slot ID)
   const branchConfigSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Stable per-slot focus callbacks — avoids creating new arrow functions on every render,
+  // which would defeat React.memo on TerminalView.
+  const focusCallbacksRef = useRef(new Map<string, () => void>());
+  const getFocusCallback = useCallback((slotId: string) => {
+    let cb = focusCallbacksRef.current.get(slotId);
+    if (!cb) {
+      cb = () => setFocusedSlotId(slotId);
+      focusCallbacksRef.current.set(slotId, cb);
+    }
+    return cb;
+  }, []);
 
   // Compute launched slots for keyboard navigation
   const launchedSlots = useMemo(
@@ -237,8 +250,10 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
 
   // Fetch branches and MCP servers when projectPath is available
   useEffect(() => {
-    if (!projectPath) {
-      setIsGitRepo(false);
+    // Lazy Load: Only fetch project metadata if the tab is active.
+    // This prevents background projects from triggering macOS permission prompts on boot.
+    if (!projectPath || !isActive) {
+      if (!projectPath) setIsGitRepo(false);
       return;
     }
 
@@ -260,7 +275,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
 
     // Fetch plugins/skills
     fetchPlugins(projectPath).catch(console.error);
-  }, [projectPath, fetchMcpServers, fetchPlugins]);
+  }, [projectPath, isActive, fetchMcpServers, fetchPlugins]);
 
   // Update slot enabled MCP servers when servers are fetched
   useEffect(() => {
@@ -595,6 +610,11 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
     const worktreePath = slot?.worktreePath;
     const workingDir = worktreePath || projectPath;
 
+    // Clean up cached focus callback for this slot
+    if (slot) {
+      focusCallbacksRef.current.delete(slot.id);
+    }
+
     setSlots((prev) => prev.filter((s) => s.sessionId !== sessionId));
 
     // Remove session from the session store
@@ -625,6 +645,7 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
    * Removes a pre-launch slot (before it's launched).
    */
   const removeSlot = useCallback((slotId: string) => {
+    focusCallbacksRef.current.delete(slotId);
     setSlots((prev) => prev.filter((s) => s.id !== slotId));
   }, []);
 
@@ -861,7 +882,8 @@ export const TerminalGrid = forwardRef<TerminalGridHandle, TerminalGridProps>(fu
             key={slot.id}
             sessionId={slot.sessionId}
             isFocused={focusedSlotId === slot.id}
-            onFocus={() => setFocusedSlotId(slot.id)}
+            isActive={isActive}
+            onFocus={getFocusCallback(slot.id)}
             onKill={handleKill}
           />
         ) : (
